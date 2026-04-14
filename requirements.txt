@@ -1,0 +1,34 @@
+# Python requirements for HMR (Human Mesh Recovery)
+# Compatible with Python 3.8 and TensorFlow 2.10
+
+# Core dependencies
+pip>=9.0
+numpy==1.23.5
+scipy==1.10.1
+matplotlib==3.7.5
+scikit-image==0.21.0
+Pillow>=6.2.0
+
+# Image processing
+opencv-python>=4.5.0
+
+# Deep Learning
+tensorflow==2.10.0
+tf_slim==1.1.0
+
+# Utilities
+absl-py>=0.2.2
+chumpy==0.70
+deepdish>=0.3.7
+ipdb>=0.13.0
+
+# 3D Rendering (replaces opendr for Windows compatibility)
+pyrender==0.1.45
+trimesh>=3.0.0
+PyOpenGL==3.1.0
+pyglet>=1.4.10
+
+# Note: opendr==0.77 has been removed due to Windows compilation issues
+# If you're on Linux and want to use opendr, uncomment the following line
+# and comment out pyrender, trimesh, PyOpenGL, and pyglet
+# opendr==0.77
