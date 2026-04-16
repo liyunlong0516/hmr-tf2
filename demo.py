@@ -36,10 +36,11 @@ from src.util import openpose as op_util
 import src.config
 from src.RunModel import RunModel
 
-flags.DEFINE_string('img_path', 'data/im1963.jpg', 'Image to run')
+flags.DEFINE_string('img_path', 'data/im1963.jpg', 'Image path or directory containing images to process')
 flags.DEFINE_string(
     'json_path', None,
     'If specified, uses the openpose output to crop the image.')
+flags.DEFINE_string('output_dir', 'output', 'Output directory for results')
 
 
 def save_mesh_to_obj(verts, faces, output_path='output_mesh.obj', apply_transform=True):
@@ -83,10 +84,14 @@ def save_mesh_to_obj(verts, faces, output_path='output_mesh.obj', apply_transfor
         print('  Applied coordinate transformation: Y-up, -Z-forward (standard 3D)')
 
 
-def visualize(img, proc_param, joints, verts, cam, save_mesh=False):
+def visualize(img, proc_param, joints, verts, cam, output_dir, img_filename, save_mesh=False):
     """
     Renders the result in original image coordinate frame.
     """
+    import os
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+    
     cam_for_render, vert_shifted, joints_orig = vis_util.get_original(
         proc_param, verts, cam, joints, img_size=img.shape[:2])
 
@@ -131,7 +136,8 @@ def visualize(img, proc_param, joints, verts, cam, save_mesh=False):
     plt.axis('off')
     plt.draw()
     # Save figure instead of showing
-    output_path = 'output_result.png'
+    base_name = os.path.splitext(img_filename)[0]
+    output_path = os.path.join(output_dir, f'{base_name}_result.png')
     plt.savefig(output_path, bbox_inches='tight', dpi=150)
     print(f'Result saved to {output_path}')
     plt.close()
@@ -143,7 +149,8 @@ def visualize(img, proc_param, joints, verts, cam, save_mesh=False):
         curr_path = osp.dirname(osp.abspath(__file__))
         face_path = osp.join(curr_path, 'src', 'tf_smpl', 'smpl_faces.npy')
         faces = np.load(face_path)
-        save_mesh_to_obj(vert_shifted, faces, 'output_mesh.obj')
+        mesh_output_path = os.path.join(output_dir, f'{base_name}_mesh.obj')
+        save_mesh_to_obj(vert_shifted, faces, mesh_output_path)
 
 
 def preprocess_image(img_path, json_path=None):
@@ -172,23 +179,69 @@ def preprocess_image(img_path, json_path=None):
     return crop, proc_param, img
 
 
-def main(img_path, json_path=None):
+def main(img_path, json_path=None, output_dir='output'):
     sess = tf.compat.v1.Session()
     model = RunModel(config, sess=sess)
+    
+    import os
+    # Check if img_path is a directory or a single file
+    if os.path.isdir(img_path):
+        # Process all images in directory
+        supported_extensions = ('.jpg', '.jpeg', '.png', '.bmp', '.gif')
+        img_files = [f for f in os.listdir(img_path) 
+                     if f.lower().endswith(supported_extensions)]
+        
+        if not img_files:
+            print(f'No image files found in {img_path}')
+            return
+        
+        print(f'Found {len(img_files)} images to process')
+        
+        for idx, img_filename in enumerate(img_files, 1):
+            img_full_path = os.path.join(img_path, img_filename)
+            print(f'\nProcessing [{idx}/{len(img_files)}]: {img_filename}')
+            
+            try:
+                input_img, proc_param, img = preprocess_image(img_full_path, json_path)
+                # Add batch dimension: 1 x D x D x 3
+                input_img = np.expand_dims(input_img, 0)
 
-    input_img, proc_param, img = preprocess_image(img_path, json_path)
-    # Add batch dimension: 1 x D x D x 3
-    input_img = np.expand_dims(input_img, 0)
+                # Theta is the 85D vector holding [camera, pose, shape]
+                # where camera is 3D [s, tx, ty]
+                # pose is 72D vector holding the rotation of 24 joints of SMPL in axis angle format
+                # shape is 10D shape coefficients of SMPL
+                joints, verts, cams, joints3d, theta = model.predict(
+                    input_img, get_theta=True)
 
-    # Theta is the 85D vector holding [camera, pose, shape]
-    # where camera is 3D [s, tx, ty]
-    # pose is 72D vector holding the rotation of 24 joints of SMPL in axis angle format
-    # shape is 10D shape coefficients of SMPL
-    joints, verts, cams, joints3d, theta = model.predict(
-        input_img, get_theta=True)
+                # Save mesh by default
+                visualize(img, proc_param, joints[0], verts[0], cams[0], 
+                         output_dir, img_filename, save_mesh=True)
+            except Exception as e:
+                print(f'Error processing {img_filename}: {str(e)}')
+                continue
+        
+        print(f'\nBatch processing complete! Results saved to {output_dir}')
+    else:
+        # Process single image
+        if not os.path.exists(img_path):
+            print(f'File not found: {img_path}')
+            return
+            
+        input_img, proc_param, img = preprocess_image(img_path, json_path)
+        # Add batch dimension: 1 x D x D x 3
+        input_img = np.expand_dims(input_img, 0)
 
-    # Save mesh by default
-    visualize(img, proc_param, joints[0], verts[0], cams[0], save_mesh=True)
+        # Theta is the 85D vector holding [camera, pose, shape]
+        # where camera is 3D [s, tx, ty]
+        # pose is 72D vector holding the rotation of 24 joints of SMPL in axis angle format
+        # shape is 10D shape coefficients of SMPL
+        joints, verts, cams, joints3d, theta = model.predict(
+            input_img, get_theta=True)
+
+        # Save mesh by default
+        img_filename = os.path.basename(img_path)
+        visualize(img, proc_param, joints[0], verts[0], cams[0], 
+                 output_dir, img_filename, save_mesh=True)
 
 
 if __name__ == '__main__':
@@ -201,4 +254,4 @@ if __name__ == '__main__':
 
     renderer = vis_util.SMPLRenderer(face_path=config.smpl_face_path)
 
-    main(config.img_path, config.json_path)
+    main(config.img_path, config.json_path, config.output_dir)

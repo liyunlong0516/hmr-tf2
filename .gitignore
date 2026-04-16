@@ -6,3 +6,5 @@ logs*/
 forrelease.sh
 .idea/*
 venv/*
+output/*
+models.tar.gz
