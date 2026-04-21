@@ -36,7 +36,7 @@ from src.util import openpose as op_util
 import src.config
 from src.RunModel import RunModel
 
-flags.DEFINE_string('img_path', 'data/im1963.jpg', 'Image path or directory containing images to process')
+flags.DEFINE_string('img_path', 'data', 'Image path or directory containing images to process')
 flags.DEFINE_string(
     'json_path', None,
     'If specified, uses the openpose output to crop the image.')
